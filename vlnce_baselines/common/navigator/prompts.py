@@ -30,16 +30,25 @@ THOUGHT_SUMMARY = {
 
 # Estimate Completion
 COMPLETION_ESTIMATION = {
-    'system': "You are a completion estimation expert. Your task is to estimate what actions in the instruction have been executed based on navigation history and landmarks. \
-                All actions in the instruction are given following the temporal order. Your answer includes two parts: \"Thought\" and \"Executed Actions\". You need to use \"Thought\" and \"Executed Actions\" without any other symbols. \
-                In the \"Thought\", you must follow procedures to analyze as detailed as possible what actions have been executed: \
-                (1) What given landmarks of actions have appeared in the navigation history? \
-                (2) Analyze the direction change at each step in the navigation history. \
-                (3) Estimate each action in the instruction based on each step in the navigation history to check their completion. \
-                (4) You must estimate actions in order. This means that if action 1 is not completed, you can not completed actions 2. \
-                In the \"Executed Actions\", you must only write down actions that have been executed without other words. \
-                You must strictly refer original actions in the given instruction to estimate.",
-    'user': "Given Navigation History \"{}\" and Landmarks in the instruction \"{}\", estimate what actions in instruction \"{}\" have been executed."
+    # 'system': "You are a completion estimation expert. Your task is to estimate what actions in the instruction have been executed based on navigation history and landmarks. \
+    #             All actions in the instruction are given following the temporal order. Your answer includes two parts: \"Thought\" and \"Executed Actions\". You need to use \"Thought\" and \"Executed Actions\" without any other symbols. \
+    #             In the \"Thought\", you must follow procedures to analyze as detailed as possible what actions have been executed: \
+    #             (1) What given landmarks of actions have appeared in the navigation history? \
+    #             (2) Analyze the direction change a:t each step in the navigation history. \
+    #             (3) Estimate each action in the instruction based on each step in the navigation history to check their completion. \
+    #             (4) You must estimate actions in order. This means that if action 1 is not completed, you can not completed actions 2. \
+    #             In the \"Executed Actions\", you must only write down actions that have been executed without other words. \
+    #             You must strictly refer original actions in the given instruction to estimate.",
+    # 'user': "Given Navigation History \"{}\" and Landmarks in the instruction \"{}\", estimate what actions in instruction \"{}\" have been executed."
+    'system': "You are a completion estimation expert. Your task is to estimate what actions in the instruction have ALREADY been completed so far, based ONLY on the navigation history. \
+                Your answer has two parts: \"Thought\" and \"Executed Actions\". Use exactly these labels. \
+                CRITICAL RULES: (1) Be CONSERVATIVE: only list an action as completed when the history clearly shows that landmark or movement has been reached or done. When in doubt, list FEWER actions. \
+                (2) Actions are strictly in order: if action 1 is not done, you MUST NOT mark action 2 or any later action as done. \
+                (3) If the history only contains \"Step 0 start position\" or similar (no real movement yet), you MUST answer \"Executed Actions: None\". \
+                (4) Do NOT copy the full instruction action list; only the subset that is clearly already done. \
+                In \"Thought\": briefly state what landmarks/movements appear in the history and why only those actions (or none) are considered done. \
+                In \"Executed Actions\": list ONLY the actions that have ALREADY been completed; if none or almost none, write \"Executed Actions: None\".",
+    'user': "Navigation History: \"{}\". Landmarks: \"{}\". Full instruction actions: \"{}\". Based ONLY on the history, which actions have been completed so far? Be conservative. Thought: ... Executed Actions: ..."
 }
 
 # Main Navigator

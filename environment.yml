@@ -33,7 +33,7 @@ dependencies:
   - gst-plugins-base=1.14.1=h6a678d5_1
   - gstreamer=1.14.1=h5eee18b_1
   - h2=4.1.0=py38h578d9bd_0
-  - habitat-sim-mutex=1.0=headless_bullet
+  # - habitat-sim-mutex=1.0=headless_bullet
   - headless=2.0=0
   - hpack=4.0.0=pyh9f0ad1d_0
   - hyperframe=6.0.1=pyhd8ed1ab_0
@@ -202,7 +202,7 @@ dependencies:
     - gym-notices==0.0.8
     - h11==0.14.0
     - h5py==3.11.0
-    - habitat-sim==0.1.7
+    # - habitat-sim==0.1.7
     - httpcore==1.0.5
     - httplib2==0.22.0
     - httpx==0.27.2

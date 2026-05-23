@@ -294,7 +294,7 @@ def draw_mp3d_nodes(
             r_x, r_y = habitat_maps.to_grid(
                 pos[2], pos[0], img.shape[0:2], sim
             )
-
-        # only paint if over a valid point
-        if img[r_x, r_y]:
-            drawpoint(img, (r_x, r_y), MAP_MP3D_WAYPOINT, meters_per_px)
+            # only paint if over a valid point (must stay inside same-floor branch:
+            # otherwise r_x/r_y are never set for other floors)
+            if img[r_x, r_y]:
+                drawpoint(img, (r_x, r_y), MAP_MP3D_WAYPOINT, meters_per_px)

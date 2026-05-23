@@ -12,7 +12,7 @@ RESULTS_DIR: logs/eval_results/
 EVAL:
   USE_CKPT_CONFIG: False
   SPLIT: val_unseen
-  EPISODE_COUNT: -1
+  EPISODE_COUNT: -1 # 真实上限仍然由上面的 EPISODES_TO_LOAD 决定，EPISODE_COUNT 只是“在这些 loaded episodes 里最多跑多少”。
 
 MODEL:
   policy_name: PolicyViewSelectionCMA
