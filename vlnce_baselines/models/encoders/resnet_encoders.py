@@ -149,7 +149,7 @@ class TorchVisionResNet50(nn.Module):
 
         # disable gradients for resnet, params frozen
         for param in self.cnn.parameters():
-            param.requires_grad = Falseimage.png
+            param.requires_grad = False
         self.cnn.eval()
 
         self.spatial_output = spatial_output
