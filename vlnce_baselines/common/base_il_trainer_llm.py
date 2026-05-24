@@ -717,7 +717,7 @@ class BaseVLNCETrainerLLM(BaseILTrainer):
             
             # step_length = 6 if len(actions.split("\n")) <= 6 else 8 
             # 分解动作数量的两倍作为最大执行步数，如果动作数量小于5，则执行7步，如果动作数量大于5，则执行9步
-            step_length = 8 if len(actions.split("\n")) <= 5 else 12 
+            step_length = 8 if len(actions.split("\n")) <= 5 else 12
 
 
             stop_flag = False
@@ -865,12 +865,32 @@ class BaseVLNCETrainerLLM(BaseILTrainer):
                     nav_logger.info(f">>> Selected next viewpoint ID: {next_vp}\n")
                     nav_logger.info(f">>> The final env action: {env_actions}\n")
                     outputs = envs.step(env_actions)
-                    
+                    observations, _, dones, infos = [list(x) for x in zip(*outputs)]
+
+                    # Save a composed visualization (rgb/depth/overhead_rgb + top-down + history points).
+                    try:
+                        frame = observations_to_image(
+                            observations[0],
+                            infos[0],
+                            history_positions=vis_positions,
+                        )
+                        mosaic_save_name = f"step_{current_step:03d}_mosaic.jpg"
+                        mosaic_save_path = os.path.join(
+                            active_save_episode_dir,
+                            mosaic_save_name,
+                        )
+                        cv2.imwrite(
+                            mosaic_save_path,
+                            cv2.cvtColor(frame, cv2.COLOR_RGB2BGR),
+                        )
+                        nav_logger.info(f">>> Saved composed nav frame: {mosaic_save_path}")
+                    except Exception as vis_exc:
+                        nav_logger.info(f"[WARN] Failed to save composed nav frame: {vis_exc}")
+
                     curr_observe = observe_dict[vp_key]
                     nav_logger.info("========== save history ==========")
                     nav_history = navigator.save_history(nav_logger, current_step, next_vp, thought, curr_observe, nav_history)
-                
-                    observations, _, dones, infos = [list(x) for x in zip(*outputs)]
+
                     instruction, images_list = self.generate_input(observations[-1])
                     error_number = 0 
                     # finish navigation

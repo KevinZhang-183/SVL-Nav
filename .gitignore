@@ -50,14 +50,26 @@ venv/
 *.swp
 .DS_Store
 
+# ===== IDE / AI 助手文档（本地用，不 push）=====
+AGENTS.md
+CLAUDE.md
+
+# ===== 参考项目 / 嵌套仓库（不 push）=====
+STRIDER-Nav/
+
 # ===== 开发备份 / 容器本地脚本（不 push）=====
 *_init.py
 *_noSWM.py
 *_SWM_SHM.py
 *_init_SWM.py
 *_可用版本*.py
+*无骨架*.py
+*骨架版*.py
+*_STRIDER.py
 test_connective.py
 test_model_import.py
 keep_gpu_warm.py
+keep.py
 start.sh
 start2.sh
+scripts/check_llama_gpu.py

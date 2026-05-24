@@ -4,10 +4,10 @@ ACTION_DETECTION = {
     'user': "Can you decompose actions in the instruction \"{}\"? Actions: "
 }
 
-# Landmarks Extraction
+# Landmarks Extraction（只要地标名词/地点，不要动作）
 LANDMARK_DETECTION = {
-    'system': "You are a landmark extraction expert. Your task is to detect all landmarks in the given navigation instruction. You need to ensure the integrity of each landmarks. Your answer must consist ONLY of a series of labled landmark phrases without other sentences.",
-    'user': "Can you extract landmarks in the instruction \"{}\"? Landmarks: "
+    'system': "You are a landmark extraction expert. Your task is to extract only LANDMARKS (places or objects) from the navigation instruction, as short noun phrases. Do NOT include any action verbs or steps like 'go straight', 'pass', 'walk', 'stop', 'wait'. Output ONLY things such as: the pool, the bar, the chairs, the corner of the bar. Your answer must be a numbered list of landmark phrases only, no other sentences.",
+    'user': "From this instruction, list only the landmarks (places/objects): \"{}\". Landmarks: "
 }
 
 # Directions in Observation
@@ -30,16 +30,6 @@ THOUGHT_SUMMARY = {
 
 # Estimate Completion
 COMPLETION_ESTIMATION = {
-    # 'system': "You are a completion estimation expert. Your task is to estimate what actions in the instruction have been executed based on navigation history and landmarks. \
-    #             All actions in the instruction are given following the temporal order. Your answer includes two parts: \"Thought\" and \"Executed Actions\". You need to use \"Thought\" and \"Executed Actions\" without any other symbols. \
-    #             In the \"Thought\", you must follow procedures to analyze as detailed as possible what actions have been executed: \
-    #             (1) What given landmarks of actions have appeared in the navigation history? \
-    #             (2) Analyze the direction change a:t each step in the navigation history. \
-    #             (3) Estimate each action in the instruction based on each step in the navigation history to check their completion. \
-    #             (4) You must estimate actions in order. This means that if action 1 is not completed, you can not completed actions 2. \
-    #             In the \"Executed Actions\", you must only write down actions that have been executed without other words. \
-    #             You must strictly refer original actions in the given instruction to estimate.",
-    # 'user': "Given Navigation History \"{}\" and Landmarks in the instruction \"{}\", estimate what actions in instruction \"{}\" have been executed."
     'system': "You are a completion estimation expert. Your task is to estimate what actions in the instruction have ALREADY been completed so far, based ONLY on the navigation history. \
                 Your answer has two parts: \"Thought\" and \"Executed Actions\". Use exactly these labels. \
                 CRITICAL RULES: (1) Be CONSERVATIVE: only list an action as completed when the history clearly shows that landmark or movement has been reached or done. When in doubt, list FEWER actions. \

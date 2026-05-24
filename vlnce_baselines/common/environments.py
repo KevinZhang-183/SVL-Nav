@@ -39,6 +39,10 @@ class VLNCEDaggerEnv(habitat.RLEnv):
     def check_navigability(self, node: List[float]):
         return self._env.sim.is_navigable(node)
 
+    def get_habitat_sim(self):
+        r"""Return the underlying Habitat-Sim handle for visualization (e.g. ``to_grid``)."""
+        return self._env.sim
+
     def get_agent_info(self):
         agent_state = self._env.sim.get_agent_state()
         heading_vector = quaternion_rotate_vector(
@@ -128,6 +132,9 @@ class VLNCEDaggerEnv(habitat.RLEnv):
 class VLNCEInferenceEnv(habitat.RLEnv):
     def __init__(self, config: Config, dataset: Optional[Dataset] = None):
         super().__init__(config.TASK_CONFIG, dataset)
+
+    def get_habitat_sim(self):
+        return self._env.sim
 
     def get_reward_range(self):
         return (0.0, 0.0)

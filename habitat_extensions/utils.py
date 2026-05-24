@@ -1,4 +1,4 @@
-from typing import Dict
+from typing import Any, Dict, Optional, Sequence, Union
 
 import numpy as np
 from habitat.core.utils import try_cv2_import
@@ -10,7 +10,20 @@ from habitat_extensions import maps
 cv2 = try_cv2_import()
 
 
-def observations_to_image(observation: Dict, info: Dict) -> np.ndarray:
+def _overhead_rgb_observation_key(observation: Dict) -> Optional[str]:
+    for key in observation:
+        kl = key.lower()
+        if "overhead" in kl and "rgb" in kl:
+            return key
+    return None
+
+
+def observations_to_image(
+    observation: Dict,
+    info: Dict,
+    sim: Any = None,
+    history_positions: Optional[Sequence[Union[np.ndarray, Sequence[float]]]] = None,
+) -> np.ndarray:
     r"""Generate image of single frame from observation and info
     returned from a single environment step().
 
@@ -40,6 +53,18 @@ def observations_to_image(observation: Dict, info: Dict) -> np.ndarray:
             interpolation=cv2.INTER_CUBIC,
         )
         egocentric_view.append(depth_map)
+
+    oh_key = _overhead_rgb_observation_key(observation)
+    if oh_key is not None:
+        if observation_size == -1:
+            observation_size = observation[oh_key].shape[0]
+        oh = observation[oh_key][:, :, :3].astype(np.uint8)
+        oh = cv2.resize(
+            oh,
+            dsize=(observation_size, observation_size),
+            interpolation=cv2.INTER_CUBIC,
+        )
+        egocentric_view.append(oh)
 
     assert (
         len(egocentric_view) > 0
@@ -72,6 +97,30 @@ def observations_to_image(observation: Dict, info: Dict) -> np.ndarray:
             agent_rotation=info[map_k]["agent_angle"],
             agent_radius_px=min(td_map.shape[0:2]) // 24,
         )
+        if sim is not None and history_positions:
+            from habitat_extensions import vis_overlay
+
+            td_map = vis_overlay.draw_history_markers(
+                td_map,
+                sim,
+                history_positions,
+                bounds=info[map_k].get("bounds"),
+                min_dist_m=0.35,
+                color_bgr=(0, 140, 255),
+                half_size_px=3,
+            )
+        elif history_positions:
+            from habitat_extensions import vis_overlay
+
+            td_map = vis_overlay.draw_history_markers(
+                td_map,
+                None,
+                history_positions,
+                bounds=info[map_k].get("bounds"),
+                min_dist_m=0.35,
+                color_bgr=(0, 140, 255),
+                half_size_px=3,
+            )
         if td_map.shape[1] < td_map.shape[0]:
             td_map = np.rot90(td_map, 1)
 
