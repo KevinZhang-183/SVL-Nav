@@ -172,6 +172,9 @@ class BaseVLNCETrainerLLM(BaseILTrainer):
         for key in observations.keys():
             image_path = "./image_show/"
             if 'rgb' in key:
+                # Overhead camera is for visualization only, not navigator input.
+                if 'overhead' in key.lower():
+                    continue
                 image_path += f"{key}.jpg"
                 image = Image.fromarray(observations[key], mode="RGB")
                 dir_name = os.path.dirname(image_path)
@@ -193,6 +196,8 @@ class BaseVLNCETrainerLLM(BaseILTrainer):
                 depth_image_dict[str(depth_index)] = Image.open(image_path)
                 depth_index += 1
         for index in rgb_image_dict:
+            if index not in depth_image_dict:
+                continue
             image_dict[index] = {
                 'rgb': rgb_image_dict[index],
                 'depth': depth_image_dict[index]
