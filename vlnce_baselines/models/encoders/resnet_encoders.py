@@ -143,13 +143,14 @@ class TorchVisionResNet50(nn.Module):
             self.cnn = nn.Sequential()
             return
 
-        rgb_resnet = models.resnet50(pretrained=True)
+        # pretrained=False 避免无外网时 torch.hub 下载导致 Connection refused
+        rgb_resnet = models.resnet50(pretrained=False)
         rgb_modules = list(rgb_resnet.children())[:-2]
         self.cnn = torch.nn.Sequential(*rgb_modules)
 
         # disable gradients for resnet, params frozen
         for param in self.cnn.parameters():
-            param.requires_grad = False
+            param.requires_grad = Falseimage.png
         self.cnn.eval()
 
         self.spatial_output = spatial_output
