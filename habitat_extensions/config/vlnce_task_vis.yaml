@@ -28,6 +28,7 @@ SIMULATOR:
     HFOV: 90
   OVERHEAD_RGB_SENSOR:
     TYPE: HabitatSimRGBSensor
+    UUID: overhead_rgb
     WIDTH: 512
     HEIGHT: 512
     HFOV: 90
