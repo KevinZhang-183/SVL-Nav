@@ -51,6 +51,7 @@ from habitat_baselines.utils.common import (
 )
 
 from habitat_extensions.utils import observations_to_image
+from habitat_extensions.nav_vis import apply_nav_vis_config
 from vlnce_baselines.common.aux_losses import AuxLosses
 from vlnce_baselines.common.env_utils import (
     construct_envs_auto_reset_false,
@@ -503,28 +504,11 @@ class BaseVLNCETrainerLLM(BaseILTrainer):
         config.TASK_CONFIG.ENVIRONMENT.ITERATOR_OPTIONS.MAX_SCENE_REPEAT_STEPS = (
             -1
         )
-        # TOP_DOWN_MAP_VLNCE needs `data/connectivity_graphs.pkl` (MP3D connectivity graphs).
-        # If the file is missing, skip this measurement and use a fixed map_size for SWG (see loop below).
-        graphs_file = config.TASK_CONFIG.TASK.TOP_DOWN_MAP_VLNCE.GRAPHS_FILE
-        graphs_path = (
-            graphs_file if os.path.isabs(graphs_file) else os.path.join(os.getcwd(), graphs_file)
-        )
-        if os.path.exists(graphs_path):
-            if "TOP_DOWN_MAP_VLNCE" not in config.TASK_CONFIG.TASK.MEASUREMENTS:
-                config.TASK_CONFIG.TASK.MEASUREMENTS.append("TOP_DOWN_MAP_VLNCE")
-        else:
-            # Drop measure if merged config or other code already added it.
-            ms = [m for m in list(config.TASK_CONFIG.TASK.MEASUREMENTS) if m != "TOP_DOWN_MAP_VLNCE"]
-            config.TASK_CONFIG.TASK.MEASUREMENTS = ms
-            print(
-                f"[Open-Nav] Missing connectivity graphs file: {graphs_path}\n"
-                "  Skipping TOP_DOWN_MAP_VLNCE (SWG will use default map_size from get_structure_wp).\n"
-                "  To enable the full top-down map measure, place connectivity_graphs.pkl or set "
-                "TASK.TOP_DOWN_MAP_VLNCE.GRAPHS_FILE to the correct path.",
-                flush=True,
-            )
+        apply_nav_vis_config(config)
         if "COLLISIONS" not in config.TASK_CONFIG.TASK.MEASUREMENTS:
+            config.TASK_CONFIG.defrost()
             config.TASK_CONFIG.TASK.MEASUREMENTS.append("COLLISIONS")
+            config.TASK_CONFIG.freeze()
         config.freeze()
 
         if config.EVAL.SAVE_RESULTS:
@@ -872,25 +856,28 @@ class BaseVLNCETrainerLLM(BaseILTrainer):
                     outputs = envs.step(env_actions)
                     observations, _, dones, infos = [list(x) for x in zip(*outputs)]
 
-                    # Save a composed visualization (rgb/depth/overhead_rgb + top-down + history points).
-                    try:
-                        frame = observations_to_image(
-                            observations[0],
-                            infos[0],
-                            history_positions=vis_positions,
-                        )
-                        mosaic_save_name = f"step_{current_step:03d}_mosaic.jpg"
-                        mosaic_save_path = os.path.join(
-                            active_save_episode_dir,
-                            mosaic_save_name,
-                        )
-                        cv2.imwrite(
-                            mosaic_save_path,
-                            cv2.cvtColor(frame, cv2.COLOR_RGB2BGR),
-                        )
-                        nav_logger.info(f">>> Saved composed nav frame: {mosaic_save_path}")
-                    except Exception as vis_exc:
-                        nav_logger.info(f"[WARN] Failed to save composed nav frame: {vis_exc}")
+                    # Save composed visualization (controlled by NAV_VIS flags).
+                    if config.NAV_VIS.SAVE_MOSAIC:
+                        try:
+                            frame = observations_to_image(
+                                observations[0],
+                                infos[0],
+                                history_positions=vis_positions,
+                                include_overhead_rgb=config.NAV_VIS.ENABLE_OVERHEAD_RGB,
+                                include_topdown_map=config.NAV_VIS.ENABLE_TOPDOWN_MAP,
+                            )
+                            mosaic_save_name = f"step_{current_step:03d}_mosaic.jpg"
+                            mosaic_save_path = os.path.join(
+                                active_save_episode_dir,
+                                mosaic_save_name,
+                            )
+                            cv2.imwrite(
+                                mosaic_save_path,
+                                cv2.cvtColor(frame, cv2.COLOR_RGB2BGR),
+                            )
+                            nav_logger.info(f">>> Saved composed nav frame: {mosaic_save_path}")
+                        except Exception as vis_exc:
+                            nav_logger.info(f"[WARN] Failed to save composed nav frame: {vis_exc}")
 
                     curr_observe = observe_dict[vp_key]
                     nav_logger.info("========== save history ==========")

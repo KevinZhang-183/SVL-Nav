@@ -1,4 +1,4 @@
-BASE_TASK_CONFIG_PATH: habitat_extensions/config/vlnce_task_vis.yaml
+BASE_TASK_CONFIG_PATH: habitat_extensions/config/vlnce_task.yaml
 SIMULATOR_GPU_IDS: [0]
 TORCH_GPU_ID: 0
 TORCH_GPU_IDS: [0]
@@ -8,6 +8,11 @@ NUM_ENVIRONMENTS: 1
 CHECKPOINT_FOLDER: logs/checkpoints/
 EVAL_CKPT_PATH_DIR: logs/checkpoints/
 RESULTS_DIR: logs/eval_results/
+
+NAV_VIS:
+  ENABLE_OVERHEAD_RGB: True
+  ENABLE_TOPDOWN_MAP: True
+  SAVE_MOSAIC: True
 
 EVAL:
   USE_CKPT_CONFIG: False

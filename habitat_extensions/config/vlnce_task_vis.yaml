@@ -1,17 +1,13 @@
-# Same as vlnce_task.yaml plus an agent-mounted downward RGB sensor for textured
-# overhead views. Use as BASE_TASK_CONFIG_PATH for eval/visualization; keep
-# vlnce_task.yaml for IL training if policies assume only rgb + depth.
-#
-# OVERHEAD_RGB_SENSOR pose (agent body frame, +Y up): POSITION lifts the camera
-# above the agent; ORIENTATION is Euler [pitch, yaw, roll] in radians. Here
-# pitch=-pi/2 makes the camera look toward -Y (floor). Tune if needed.
+# Optional task yaml for visualization eval. Overhead RGB is controlled at runtime
+# via NAV_VIS.ENABLE_OVERHEAD_RGB in run_OpenNav_vis.yaml (or CLI opts), not here.
+# Kept for backward compatibility; same sensors as vlnce_task.yaml.
 
 ENVIRONMENT:
   MAX_EPISODE_STEPS: 20
 SIMULATOR:
   ACTION_SPACE_CONFIG: v0
   AGENT_0:
-    SENSORS: [RGB_SENSOR, DEPTH_SENSOR, OVERHEAD_RGB_SENSOR]
+    SENSORS: [RGB_SENSOR, DEPTH_SENSOR]
   FORWARD_STEP_SIZE: 0.25
   TURN_ANGLE: 15
   HABITAT_SIM_V0:
@@ -26,14 +22,6 @@ SIMULATOR:
     WIDTH: 256
     HEIGHT: 256
     HFOV: 90
-  OVERHEAD_RGB_SENSOR:
-    TYPE: HabitatSimRGBSensor
-    UUID: overhead_rgb
-    WIDTH: 512
-    HEIGHT: 512
-    HFOV: 90
-    POSITION: [0, 2.5, 0]
-    ORIENTATION: [-1.5707963267948966, 0.0, 0.0]
   TYPE:
     Sim-v1
 TASK:
@@ -64,4 +52,4 @@ DATASET:
   SPLIT: val_unseen
   DATA_PATH: data/datasets/R2R_VLNCE_v1-2_preprocessed/{split}/OpenNav_R2R-CE_100_bertidx.json.gz
   SCENES_DIR: data/scene_datasets/
-  EPISODES_TO_LOAD: 1 # Change this to run more episodes 
+  EPISODES_TO_LOAD: 1

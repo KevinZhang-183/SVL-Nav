@@ -1,6 +1,8 @@
-# Visualization eval: overhead RGB + mosaic frames (uses run_OpenNav_vis.yaml).
-# Quick test: add  EVAL.EPISODE_COUNT 1  to the flag block below.
-
+# Visualization eval: enable overhead RGB + top-down via NAV_VIS in run_OpenNav_vis.yaml.
+# Example CLI overrides:
+#   NAV_VIS.ENABLE_OVERHEAD_RGB False
+#   NAV_VIS.ENABLE_TOPDOWN_MAP True
+#   NAV_VIS.SAVE_MOSAIC False
 flag="--exp_name cont-cwp-opennav-vis
       --exp-config run_OpenNav_vis.yaml
       --llm ollama-llms

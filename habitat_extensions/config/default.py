@@ -115,6 +115,18 @@ _C.TASK.TOP_DOWN_MAP_VLNCE.FOG_OF_WAR.DRAW = False
 _C.TASK.TOP_DOWN_MAP_VLNCE.FOG_OF_WAR.FOV = 79
 _C.TASK.TOP_DOWN_MAP_VLNCE.FOG_OF_WAR.VISIBILITY_DIST = 5.0
 # ----------------------------------------------------------------------------
+# OVERHEAD RGB SENSOR (attached at runtime when NAV_VIS.ENABLE_OVERHEAD_RGB)
+# Pose is agent body frame (+Y up): POSITION lifts camera; pitch=-pi/2 looks at floor.
+# ----------------------------------------------------------------------------
+_C.SIMULATOR.OVERHEAD_RGB_SENSOR = CN()
+_C.SIMULATOR.OVERHEAD_RGB_SENSOR.TYPE = "HabitatSimRGBSensor"
+_C.SIMULATOR.OVERHEAD_RGB_SENSOR.UUID = "overhead_rgb"
+_C.SIMULATOR.OVERHEAD_RGB_SENSOR.WIDTH = 512
+_C.SIMULATOR.OVERHEAD_RGB_SENSOR.HEIGHT = 512
+_C.SIMULATOR.OVERHEAD_RGB_SENSOR.HFOV = 90
+_C.SIMULATOR.OVERHEAD_RGB_SENSOR.POSITION = [0, 2.5, 0]
+_C.SIMULATOR.OVERHEAD_RGB_SENSOR.ORIENTATION = [-1.5707963267948966, 0.0, 0.0]
+# ----------------------------------------------------------------------------
 # DATASET EXTENSIONS
 # ----------------------------------------------------------------------------
 _C.DATASET.ROLES = ["guide"]  # options: "*", "guide", "follower"

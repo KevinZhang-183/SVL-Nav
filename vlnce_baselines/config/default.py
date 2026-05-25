@@ -37,6 +37,15 @@ _C.EVAL.NONLEARNING = CN()
 _C.EVAL.NONLEARNING.AGENT = "RandomAgent"
 
 # -----------------------------------------------------------------------------
+# NAV VIS CONFIG — toggles for eval-time mosaic / map visualization
+# Override via run yaml or CLI, e.g. NAV_VIS.ENABLE_OVERHEAD_RGB True
+# -----------------------------------------------------------------------------
+_C.NAV_VIS = CN()
+_C.NAV_VIS.ENABLE_OVERHEAD_RGB = False
+_C.NAV_VIS.ENABLE_TOPDOWN_MAP = True
+_C.NAV_VIS.SAVE_MOSAIC = True
+
+# -----------------------------------------------------------------------------
 # INFERENCE CONFIG
 # -----------------------------------------------------------------------------
 _C.INFERENCE = CN()

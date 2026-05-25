@@ -23,6 +23,8 @@ def observations_to_image(
     info: Dict,
     sim: Any = None,
     history_positions: Optional[Sequence[Union[np.ndarray, Sequence[float]]]] = None,
+    include_overhead_rgb: bool = True,
+    include_topdown_map: bool = True,
 ) -> np.ndarray:
     r"""Generate image of single frame from observation and info
     returned from a single environment step().
@@ -55,7 +57,7 @@ def observations_to_image(
         egocentric_view.append(depth_map)
 
     oh_key = _overhead_rgb_observation_key(observation)
-    if oh_key is not None:
+    if include_overhead_rgb and oh_key is not None:
         if observation_size == -1:
             observation_size = observation[oh_key].shape[0]
         oh = observation[oh_key][:, :, :3].astype(np.uint8)
@@ -83,7 +85,7 @@ def observations_to_image(
     elif "top_down_map" in info:
         map_k = "top_down_map"
 
-    if map_k is not None:
+    if include_topdown_map and map_k is not None:
         td_map = info[map_k]["map"]
 
         td_map = maps.colorize_topdown_map(

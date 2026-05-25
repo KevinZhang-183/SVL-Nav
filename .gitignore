@@ -53,6 +53,7 @@ venv/
 # ===== IDE / AI 助手文档（本地用，不 push）=====
 AGENTS.md
 CLAUDE.md
+NAV_VIS_可视化开关说明.md
 
 # ===== 参考项目 / 嵌套仓库（不 push）=====
 STRIDER-Nav/
