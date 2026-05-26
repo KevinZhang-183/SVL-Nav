@@ -59,6 +59,7 @@ NAV_VIS_可视化开关说明.md
 
 # ===== 参考项目 / 嵌套仓库（不 push）=====
 STRIDER-Nav/
+ggc-nav/
 
 # ===== 开发备份 / 容器本地脚本（不 push）=====
 *_init.py
