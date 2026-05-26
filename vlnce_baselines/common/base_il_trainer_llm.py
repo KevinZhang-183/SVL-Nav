@@ -645,6 +645,7 @@ class BaseVLNCETrainerLLM(BaseILTrainer):
         error_number = 0
         # SWG visited-path cache (used to filter already-seen candidate viewpoints).
         vis_positions = []
+        active_scene_id = None
 
         # Start the evaluation loop.
         while envs.num_envs > 0 and len(stats_episodes) < episodes_to_eval:
@@ -679,6 +680,8 @@ class BaseVLNCETrainerLLM(BaseILTrainer):
                 nav_logger.info(f">>> Saved episode instruction text: {instruction_txt_path}")
                 # Reset visited-path cache for each episode.
                 vis_positions = []
+                scene_path = str(current_episodes[0].scene_id).replace("\\", "/")
+                active_scene_id = scene_path.split("/")[-2]
 
 
             positions = []; headings = []
@@ -865,6 +868,11 @@ class BaseVLNCETrainerLLM(BaseILTrainer):
                                 history_positions=vis_positions,
                                 include_overhead_rgb=config.NAV_VIS.ENABLE_OVERHEAD_RGB,
                                 include_topdown_map=config.NAV_VIS.ENABLE_TOPDOWN_MAP,
+                                include_texture_topdown=config.NAV_VIS.ENABLE_TEXTURE_TOPDOWN,
+                                scene_id=active_scene_id,
+                                agent_floor_y=positions[0][1] if positions else None,
+                                texture_cache_dir=config.NAV_VIS.TEXTURE_CACHE_DIR,
+                                texture_floor_snap=config.NAV_VIS.TEXTURE_FLOOR_SNAP,
                             )
                             mosaic_save_name = f"step_{current_step:03d}_mosaic.jpg"
                             mosaic_save_path = os.path.join(

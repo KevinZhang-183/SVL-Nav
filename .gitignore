@@ -33,6 +33,8 @@ checkpoints/
 
 # ===== 运行产物 / 可视化 =====
 cache_files/
+cache/topdown_texture/*
+!cache/topdown_texture/.gitkeep
 image_show/
 selected_next_vp_rgb/
 ego_map.png

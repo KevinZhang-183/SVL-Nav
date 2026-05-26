@@ -33,6 +33,11 @@ def apply_nav_vis_config(config: Any) -> None:
         sensors = [s for s in sensors if s != OVERHEAD_SENSOR_NAME]
     task.SIMULATOR.AGENT_0.SENSORS = sensors
 
+    if nav_vis.ENABLE_TEXTURE_TOPDOWN:
+        task.TASK.TOP_DOWN_MAP_VLNCE.MAP_RESOLUTION = int(
+            nav_vis.TEXTURE_RESOLUTION
+        )
+
     measurements = list(task.TASK.MEASUREMENTS)
     graphs_path = _graphs_path(config)
     if nav_vis.ENABLE_TOPDOWN_MAP and os.path.exists(graphs_path):

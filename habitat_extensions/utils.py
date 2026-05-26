@@ -25,6 +25,11 @@ def observations_to_image(
     history_positions: Optional[Sequence[Union[np.ndarray, Sequence[float]]]] = None,
     include_overhead_rgb: bool = True,
     include_topdown_map: bool = True,
+    include_texture_topdown: bool = False,
+    scene_id: Optional[str] = None,
+    agent_floor_y: Optional[float] = None,
+    texture_cache_dir: Optional[str] = None,
+    texture_floor_snap: float = 0.25,
 ) -> np.ndarray:
     r"""Generate image of single frame from observation and info
     returned from a single environment step().
@@ -86,43 +91,63 @@ def observations_to_image(
         map_k = "top_down_map"
 
     if include_topdown_map and map_k is not None:
-        td_map = info[map_k]["map"]
+        info_td = info[map_k]
+        td_map = None
+        if (
+            include_texture_topdown
+            and scene_id
+            and agent_floor_y is not None
+            and texture_cache_dir
+        ):
+            from habitat_extensions import topdown_texture
 
-        td_map = maps.colorize_topdown_map(
-            td_map,
-            info[map_k]["fog_of_war_mask"],
-            fog_of_war_desat_amount=0.75,
-        )
-        td_map = habitat_maps.draw_agent(
-            image=td_map,
-            agent_center_coord=info[map_k]["agent_map_coord"],
-            agent_rotation=info[map_k]["agent_angle"],
-            agent_radius_px=min(td_map.shape[0:2]) // 24,
-        )
-        if sim is not None and history_positions:
-            from habitat_extensions import vis_overlay
-
-            td_map = vis_overlay.draw_history_markers(
-                td_map,
-                sim,
-                history_positions,
-                bounds=info[map_k].get("bounds"),
-                min_dist_m=0.35,
-                color_bgr=(0, 140, 255),
-                half_size_px=3,
+            td_map = topdown_texture.compose_texture_topdown_panel(
+                info_td,
+                texture_cache_dir,
+                scene_id,
+                agent_floor_y,
+                history_positions=history_positions,
+                sim=sim,
+                floor_snap=texture_floor_snap,
             )
-        elif history_positions:
-            from habitat_extensions import vis_overlay
 
-            td_map = vis_overlay.draw_history_markers(
+        if td_map is None:
+            td_map = info_td["map"]
+            td_map = maps.colorize_topdown_map(
                 td_map,
-                None,
-                history_positions,
-                bounds=info[map_k].get("bounds"),
-                min_dist_m=0.35,
-                color_bgr=(0, 140, 255),
-                half_size_px=3,
+                info_td["fog_of_war_mask"],
+                fog_of_war_desat_amount=0.75,
             )
+            td_map = habitat_maps.draw_agent(
+                image=td_map,
+                agent_center_coord=info_td["agent_map_coord"],
+                agent_rotation=info_td["agent_angle"],
+                agent_radius_px=min(td_map.shape[0:2]) // 24,
+            )
+            if sim is not None and history_positions:
+                from habitat_extensions import vis_overlay
+
+                td_map = vis_overlay.draw_history_markers(
+                    td_map,
+                    sim,
+                    history_positions,
+                    bounds=info_td.get("bounds"),
+                    min_dist_m=0.35,
+                    color_bgr=(0, 140, 255),
+                    half_size_px=3,
+                )
+            elif history_positions:
+                from habitat_extensions import vis_overlay
+
+                td_map = vis_overlay.draw_history_markers(
+                    td_map,
+                    None,
+                    history_positions,
+                    bounds=info_td.get("bounds"),
+                    min_dist_m=0.35,
+                    color_bgr=(0, 140, 255),
+                    half_size_px=3,
+                )
         if td_map.shape[1] < td_map.shape[0]:
             td_map = np.rot90(td_map, 1)
 
