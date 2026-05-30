@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import glob
+import gzip
 import json
 import math
 import os
@@ -47,6 +48,39 @@ def cache_paths(
     )
 
 
+def snap_floor_y(y: float, floor_snap: float = DEFAULT_FLOOR_SNAP) -> float:
+    return round(float(y) / floor_snap) * floor_snap
+
+
+def load_r2r_scene_floor_y_map(
+    data_path: str,
+    split: str,
+    floor_snap: float = DEFAULT_FLOOR_SNAP,
+    scene_ids: Optional[List[str]] = None,
+) -> Dict[str, float]:
+    """Map scene_id -> one floor_y from the first episode start_position in R2R json."""
+    dataset_path = data_path.format(split=split)
+    if not os.path.isfile(dataset_path):
+        raise FileNotFoundError(f"R2R dataset not found: {dataset_path}")
+
+    out: Dict[str, float] = {}
+    with gzip.open(dataset_path, "rt", encoding="utf-8") as f:
+        payload = json.load(f)
+
+    for episode in payload.get("episodes", []):
+        scene_path = str(episode.get("scene_id", ""))
+        sid = scene_id_from_path(scene_path)
+        if scene_ids is not None and sid not in scene_ids:
+            continue
+        if sid in out:
+            continue
+        start_position = episode.get("start_position")
+        if not start_position or len(start_position) < 2:
+            continue
+        out[sid] = snap_floor_y(start_position[1], floor_snap=floor_snap)
+    return out
+
+
 def list_mp3d_scene_ids(scenes_dir: str) -> List[str]:
     if not os.path.isdir(scenes_dir):
         return []
@@ -66,6 +100,7 @@ def discover_floor_heights(
     floor_snap: float = DEFAULT_FLOOR_SNAP,
     num_samples: int = 300,
 ) -> List[float]:
+    """Legacy NavMesh sampling; default baking uses episode start y instead."""
     pf = sim.pathfinder
     heights: List[float] = []
     for _ in range(num_samples):
@@ -205,6 +240,7 @@ def bake_floor_texture(
         "camera_position": [float(x) for x in center],
         "black_fallback": bool(apply_fallback),
         "black_threshold": int(black_threshold),
+        "floor_y_source": "episode_start",
     }
     return texture, metadata
 

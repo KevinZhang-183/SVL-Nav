@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import os
 import sys
+from typing import Dict, List, Optional
 
 import habitat_extensions  # noqa: F401
 import vlnce_baselines  # noqa: F401
@@ -15,19 +16,23 @@ from habitat_baselines.utils.env_utils import make_env_fn
 
 from habitat_extensions.topdown_texture import (
     DEFAULT_CAMERA_HEIGHT,
+    DEFAULT_FLOOR_SNAP,
     DEFAULT_TEXTURE_RESOLUTION,
     bake_floor_texture,
     configure_bake_sensors,
-    discover_floor_heights,
-    list_mp3d_scene_ids,
+    load_r2r_scene_floor_y_map,
     save_texture_cache,
+    snap_floor_y,
 )
 from vlnce_baselines.config.default import get_config
 
 
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Bake MP3D top-down RGB texture maps for offline eval visualization."
+        description=(
+            "Bake MP3D top-down RGB texture maps for offline eval visualization. "
+            "Default: one floor_y per scene from R2R episode start y, 8m camera, 2048px."
+        )
     )
     parser.add_argument(
         "--exp-config",
@@ -44,13 +49,19 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--all",
         action="store_true",
-        help="Bake all scenes under data/scene_datasets/mp3d/.",
+        help="Bake all scenes appearing in the R2R dataset split.",
     )
     parser.add_argument(
-        "--scenes-dir",
+        "--split",
         type=str,
-        default="data/scene_datasets/mp3d",
-        help="MP3D root directory.",
+        default=None,
+        help="R2R split for episode start y lookup (default: TASK_CONFIG.DATASET.SPLIT).",
+    )
+    parser.add_argument(
+        "--floor-y",
+        type=float,
+        default=None,
+        help="Manual floor_y override (meters). Skips episode start y lookup.",
     )
     parser.add_argument(
         "--cache-dir",
@@ -68,7 +79,13 @@ def _parse_args() -> argparse.Namespace:
         "--camera-height",
         type=float,
         default=DEFAULT_CAMERA_HEIGHT,
-        help="Overhead sensor height above agent body (meters).",
+        help="Overhead sensor height above agent body (default 8.0 meters).",
+    )
+    parser.add_argument(
+        "--floor-snap",
+        type=float,
+        default=DEFAULT_FLOOR_SNAP,
+        help="Snap episode start y to this step (default 0.25).",
     )
     parser.add_argument(
         "--force",
@@ -89,17 +106,52 @@ def _parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def _scene_targets(args: argparse.Namespace) -> list:
+def _load_config(args: argparse.Namespace):
+    opts = list(args.opts or [])
+    return get_config(args.exp_config, opts)
+
+
+def _resolve_split(args: argparse.Namespace, config) -> str:
+    if args.split:
+        return args.split
+    return str(config.TASK_CONFIG.DATASET.SPLIT)
+
+
+def _scene_targets(args: argparse.Namespace, floor_y_map: Dict[str, float]) -> List[str]:
     if args.scene:
         return [args.scene]
     if args.all:
-        return list_mp3d_scene_ids(args.scenes_dir)
+        return sorted(floor_y_map.keys())
     raise SystemExit("Specify --scene <id> or --all")
 
 
-def _build_config(args: argparse.Namespace, scene_id: str):
-    opts = list(args.opts or [])
-    config = get_config(args.exp_config, opts)
+def _build_floor_y_map(
+    args: argparse.Namespace, config, scene_ids: Optional[List[str]]
+) -> Dict[str, float]:
+    split = _resolve_split(args, config)
+    dataset = config.TASK_CONFIG.DATASET
+
+    if args.floor_y is not None:
+        floor_y = snap_floor_y(args.floor_y, floor_snap=args.floor_snap)
+        if scene_ids is not None:
+            return {sid: floor_y for sid in scene_ids}
+        dataset_scenes = load_r2r_scene_floor_y_map(
+            dataset.DATA_PATH,
+            split,
+            floor_snap=args.floor_snap,
+            scene_ids=None,
+        )
+        return {sid: floor_y for sid in dataset_scenes}
+
+    return load_r2r_scene_floor_y_map(
+        dataset.DATA_PATH,
+        split,
+        floor_snap=args.floor_snap,
+        scene_ids=scene_ids,
+    )
+
+
+def _build_config(args: argparse.Namespace, scene_id: str, config):
     config.defrost()
     config.NUM_ENVIRONMENTS = 1
     config.TASK_CONFIG.defrost()
@@ -125,46 +177,72 @@ def _needs_bake(cache_dir: str, scene_id: str, floor_y: float, force: bool) -> b
     return not (os.path.isfile(png_path) and os.path.isfile(json_path))
 
 
-def bake_scene(args: argparse.Namespace, scene_id: str) -> None:
-    config = _build_config(args, scene_id)
+def bake_scene(
+    args: argparse.Namespace,
+    config,
+    scene_id: str,
+    floor_y: float,
+) -> None:
+    config = _build_config(args, scene_id, config)
     env = make_env_fn(config, get_env_class(config.ENV_NAME))
     try:
         env.reset()
         sim = env.get_habitat_sim()
-        floor_heights = discover_floor_heights(sim)
-        print(f"[bake] scene={scene_id} floors={floor_heights}")
+        print(
+            f"[bake] scene={scene_id} floor_y={floor_y:.2f} "
+            f"(episode_start_y) camera={args.camera_height}m res={args.resolution}"
+        )
 
-        for floor_y in floor_heights:
-            if not _needs_bake(args.cache_dir, scene_id, floor_y, args.force):
-                print(f"  skip existing floor_y={floor_y:.2f}")
-                continue
-            texture, meta = bake_floor_texture(
-                sim,
-                env,
-                floor_y=floor_y,
-                map_resolution=args.resolution,
-                camera_height=args.camera_height,
-                apply_fallback=not args.no_black_fallback,
-            )
-            meta["scene_id"] = scene_id
-            png_path, json_path = save_texture_cache(
-                args.cache_dir, scene_id, floor_y, texture, meta
-            )
-            print(f"  saved floor_y={floor_y:.2f} -> {png_path}")
-            print(f"             meta -> {json_path} shape={meta['map_shape']}")
+        if not _needs_bake(args.cache_dir, scene_id, floor_y, args.force):
+            print("  skip existing cache")
+            return
+
+        texture, meta = bake_floor_texture(
+            sim,
+            env,
+            floor_y=floor_y,
+            map_resolution=args.resolution,
+            camera_height=args.camera_height,
+            apply_fallback=not args.no_black_fallback,
+        )
+        meta["scene_id"] = scene_id
+        meta["floor_y_source"] = "manual" if args.floor_y is not None else "episode_start"
+        png_path, json_path = save_texture_cache(
+            args.cache_dir, scene_id, floor_y, texture, meta
+        )
+        print(f"  saved -> {png_path}")
+        print(f"         meta -> {json_path} shape={meta['map_shape']}")
     finally:
         env.close()
 
 
 def main() -> None:
     args = _parse_args()
-    scenes = _scene_targets(args)
+    base_config = _load_config(args)
+
+    requested_scenes = [args.scene] if args.scene else None
+    floor_y_map = _build_floor_y_map(args, base_config, requested_scenes)
+    scenes = _scene_targets(args, floor_y_map)
+
+    missing = [sid for sid in scenes if sid not in floor_y_map]
+    if missing:
+        split = _resolve_split(args, base_config)
+        raise SystemExit(
+            "No episode start y found for scene(s) "
+            f"{missing} in split={split}. Use --floor-y to override."
+        )
+
     os.makedirs(args.cache_dir, exist_ok=True)
-    print(f"Baking {len(scenes)} scene(s) -> {args.cache_dir} @ {args.resolution}px")
+    split = _resolve_split(args, base_config)
+    print(
+        f"Baking {len(scenes)} scene(s) from split={split} -> "
+        f"{args.cache_dir} @ {args.resolution}px, camera={args.camera_height}m"
+    )
+
     failed = []
     for scene_id in scenes:
         try:
-            bake_scene(args, scene_id)
+            bake_scene(args, base_config, scene_id, floor_y_map[scene_id])
         except Exception as exc:
             print(f"[ERROR] scene={scene_id}: {exc}", file=sys.stderr)
             failed.append(scene_id)
