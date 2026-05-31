@@ -33,6 +33,8 @@ def observations_to_image(
     texture_trajectory_margin_m: float = 5.0,
     texture_black_threshold: int = 15,
     texture_white_threshold: int = 235,
+    texture_geometry_base: bool = False,
+    texture_white_background: bool = True,
 ) -> np.ndarray:
     r"""Generate image of single frame from observation and info
     returned from a single environment step().
@@ -115,6 +117,8 @@ def observations_to_image(
                 trajectory_margin_m=texture_trajectory_margin_m,
                 black_threshold=texture_black_threshold,
                 white_threshold=texture_white_threshold,
+                use_geometry_base=texture_geometry_base,
+                apply_white_background=texture_white_background,
             )
 
         if td_map is None:

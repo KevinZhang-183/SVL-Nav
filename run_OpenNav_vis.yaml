@@ -9,15 +9,64 @@ CHECKPOINT_FOLDER: logs/checkpoints/
 EVAL_CKPT_PATH_DIR: logs/checkpoints/
 RESULTS_DIR: logs/eval_results/
 
+# NAV_VIS — eval mosaic / top-down visualization toggles
+# NAV_VIS — eval 可视化 mosaic / 俯视图开关
 NAV_VIS:
+  # Include live overhead RGB column in mosaic (renders every step; slow).
+  # mosaic 是否包含每步实时俯视 RGB 列（每步渲染，较慢）。
   ENABLE_OVERHEAD_RGB: False
+
+  # Include top-down map panel in mosaic (NavMesh geometry + trajectory).
+  # mosaic 是否包含俯视地图面板（NavMesh 几何图 + 轨迹）。
   ENABLE_TOPDOWN_MAP: True
+
+  # Load offline baked texture as top-down base (requires cache under TEXTURE_CACHE_DIR).
+  # 是否使用离线烘焙纹理作为俯视底图（需 TEXTURE_CACHE_DIR 下有缓存）。
   ENABLE_TEXTURE_TOPDOWN: True
+
+  # Save step_XXX_mosaic.jpg under selected_next_vp_rgb/episode_<id>/.
+  # 是否保存 step_XXX_mosaic.jpg 到 selected_next_vp_rgb/episode_<id>/。
   SAVE_MOSAIC: True
+
+  # Directory of baked {scene_id}_y{floor}.png + .json from bake_topdown_texture.py.
+  # 离线烘焙输出目录（bake_topdown_texture.py 生成的 png/json）。
   TEXTURE_CACHE_DIR: cache/topdown_texture
+
+  # Top-down map grid resolution; must match bake --resolution (default 2048).
+  # 俯视栅格分辨率；须与烘焙 --resolution 一致（默认 2048）。
   TEXTURE_RESOLUTION: 2048
+
+  # Overhead camera height (m) when baking; eval only reads cache (informational default).
+  # 烘焙时相机相对 agent 高度（米）；eval 只读缓存（与烘焙命令对齐用）。
+  TEXTURE_CAMERA_HEIGHT: 8.0
+
+  # Snap agent y to this step (m) when picking floor_y cache file.
+  # 按 agent 高度选缓存时，y 的 snap 步长（米）。
+  TEXTURE_FLOOR_SNAP: 0.25
+
+  # Expand trajectory bbox by this margin (m) when blending texture in eval.
+  # eval 混合纹理时，轨迹 bbox 外扩边距（米）。
   TEXTURE_TRAJECTORY_MARGIN_M: 5.0
+
+  # RGB max below this → treat as unrendered black (exclude or whiten).
+  # RGB 最大值低于此阈值视为未渲染黑色（剔除或转白）。
+  TEXTURE_BLACK_THRESHOLD: 15
+
+  # RGB max above this → treat as white hole (skip texture blend if geometry base).
+  # RGB 最大值高于此阈值视为白洞（几何叠底模式下不贴纹理）。
   TEXTURE_WHITE_THRESHOLD: 235
+
+  # Under texture, use gray NavMesh map instead of white canvas (legacy / debug).
+  # 纹理下方是否叠几何灰度 NavMesh 图（旧方案 / 调试用）。
+  TEXTURE_GEOMETRY_BASE: False
+
+  # Replace black void / invalid NavMesh pixels with white (bake + eval compose).
+  # 将黑色 void / NavMesh 无效区替换为白色（烘焙 PNG 与 eval 合成）。
+  TEXTURE_WHITE_BACKGROUND: True
+
+  # [Legacy] If True, dark pixels fall back to gray geometry during bake (use --no-white-background flow instead).
+  # [遗留] 烘焙时暗像素回退为灰度几何图（现推荐用 TEXTURE_WHITE_BACKGROUND）。
+  TEXTURE_BLACK_FALLBACK: False
 
 EVAL:
   USE_CKPT_CONFIG: False

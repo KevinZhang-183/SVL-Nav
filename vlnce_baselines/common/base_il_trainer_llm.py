@@ -880,6 +880,8 @@ class BaseVLNCETrainerLLM(BaseILTrainer):
                                 texture_trajectory_margin_m=config.NAV_VIS.TEXTURE_TRAJECTORY_MARGIN_M,
                                 texture_black_threshold=config.NAV_VIS.TEXTURE_BLACK_THRESHOLD,
                                 texture_white_threshold=config.NAV_VIS.TEXTURE_WHITE_THRESHOLD,
+                                texture_geometry_base=config.NAV_VIS.TEXTURE_GEOMETRY_BASE,
+                                texture_white_background=config.NAV_VIS.TEXTURE_WHITE_BACKGROUND,
                             )
                             mosaic_save_name = f"step_{current_step:03d}_mosaic.jpg"
                             mosaic_save_path = os.path.join(

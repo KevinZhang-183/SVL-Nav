@@ -183,6 +183,25 @@ def valid_texture_pixel_mask(
     return (peak > black_threshold) & (peak < white_threshold)
 
 
+def apply_white_background(
+    texture_rgb: np.ndarray,
+    label_map: Optional[np.ndarray] = None,
+    black_threshold: int = DEFAULT_BLACK_THRESHOLD,
+) -> np.ndarray:
+    """Replace Habitat void / unrendered black pixels with white."""
+    out = texture_rgb.copy()
+    dark = out.max(axis=2) < black_threshold
+    if label_map is not None:
+        dark |= label_map == ext_maps.MAP_INVALID_POINT
+    out[dark] = np.array([255, 255, 255], dtype=np.uint8)
+    return out
+
+
+def make_white_topdown_canvas(shape: Tuple[int, int]) -> np.ndarray:
+    h, w = shape
+    return np.full((h, w, 3), 255, dtype=np.uint8)
+
+
 def load_r2r_scene_floor_y_map(
     data_path: str,
     split: str,
@@ -347,6 +366,7 @@ def bake_floor_texture(
     hfov_deg: Optional[float] = None,
     black_threshold: int = DEFAULT_BLACK_THRESHOLD,
     apply_fallback: bool = False,
+    apply_white_background: bool = True,
 ) -> Tuple[np.ndarray, Dict[str, Any]]:
     trajectory_bbox = None
     if trajectory_xz_points:
@@ -393,6 +413,15 @@ def bake_floor_texture(
             interpolation=cv2.INTER_LINEAR,
         )
 
+    if apply_fallback:
+        texture = apply_black_fallback(
+            texture, label_map, fog_of_war_mask=None, threshold=black_threshold
+        )
+    elif apply_white_background:
+        texture = apply_white_background(
+            texture, label_map=label_map, black_threshold=black_threshold
+        )
+
     lower, upper = sim.pathfinder.get_bounds()
     metadata = {
         "scene_id": None,
@@ -409,6 +438,7 @@ def bake_floor_texture(
         "camera_position": [float(x) for x in center],
         "black_fallback": bool(apply_fallback),
         "black_threshold": int(black_threshold),
+        "white_background": bool(apply_white_background and not apply_fallback),
         "floor_y_source": "episode_start",
         "white_threshold": int(DEFAULT_WHITE_THRESHOLD),
         "local_bake": trajectory_bbox is not None,
@@ -554,6 +584,8 @@ def compose_texture_topdown_panel(
     trajectory_margin_m: float = DEFAULT_TRAJECTORY_MARGIN_M,
     black_threshold: int = DEFAULT_BLACK_THRESHOLD,
     white_threshold: int = DEFAULT_WHITE_THRESHOLD,
+    use_geometry_base: bool = False,
+    apply_white_background: bool = True,
 ) -> Optional[np.ndarray]:
     texture_rgb, meta = load_texture_for_agent(
         cache_dir, scene_id, agent_floor_y, floor_snap=floor_snap
@@ -566,12 +598,15 @@ def compose_texture_topdown_panel(
     if bounds is None:
         return None
 
-    bgr = compose_geometry_topdown_panel(
-        info_td,
-        history_positions=None,
-        sim=sim,
-        bounds=bounds,
-    )
+    if use_geometry_base:
+        bgr = compose_geometry_topdown_panel(
+            info_td,
+            history_positions=None,
+            sim=sim,
+            bounds=bounds,
+        )
+    else:
+        bgr = make_white_topdown_canvas(label_map.shape)
 
     baked_bbox = meta.get("trajectory_bbox")
     runtime_points = collect_runtime_trajectory_xz(history_positions, sim=sim)
@@ -580,26 +615,39 @@ def compose_texture_topdown_panel(
     )
     if runtime_bbox is None and baked_bbox is not None:
         runtime_bbox = baked_bbox
-    if runtime_bbox is None:
-        return cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
 
-    bbox_mask = build_bbox_grid_mask(label_map.shape, bounds, runtime_bbox)
-    navigable = label_map != ext_maps.MAP_INVALID_POINT
     if texture_rgb.shape[:2] != label_map.shape:
         texture_rgb = cv2.resize(
             texture_rgb,
             (label_map.shape[1], label_map.shape[0]),
             interpolation=cv2.INTER_LINEAR,
         )
-    valid_tex = valid_texture_pixel_mask(
-        texture_rgb,
-        black_threshold=black_threshold,
-        white_threshold=white_threshold,
-    )
-    blend_mask = bbox_mask & navigable & valid_tex
+    if apply_white_background and not use_geometry_base:
+        texture_rgb = apply_white_background(
+            texture_rgb, label_map=label_map, black_threshold=black_threshold
+        )
+    elif apply_white_background and use_geometry_base:
+        texture_rgb = apply_white_background(
+            texture_rgb, label_map=None, black_threshold=black_threshold
+        )
 
+    navigable = label_map != ext_maps.MAP_INVALID_POINT
     texture_bgr = cv2.cvtColor(texture_rgb, cv2.COLOR_RGB2BGR)
-    bgr[blend_mask] = texture_bgr[blend_mask]
+
+    if runtime_bbox is not None:
+        bbox_mask = build_bbox_grid_mask(label_map.shape, bounds, runtime_bbox)
+        valid_tex = valid_texture_pixel_mask(
+            texture_rgb,
+            black_threshold=black_threshold,
+            white_threshold=white_threshold,
+        )
+        if use_geometry_base:
+            blend_mask = bbox_mask & navigable & valid_tex
+        else:
+            blend_mask = bbox_mask & navigable
+        bgr[blend_mask] = texture_bgr[blend_mask]
+    elif not use_geometry_base:
+        bgr[navigable] = texture_bgr[navigable]
 
     overlay_values = set(range(15, 246)).union(
         {

@@ -104,6 +104,11 @@ def _parse_args() -> argparse.Namespace:
         help="Expand reference-path bbox by this margin in meters (default 5.0).",
     )
     parser.add_argument(
+        "--no-white-background",
+        action="store_true",
+        help="Keep Habitat black void pixels instead of converting them to white.",
+    )
+    parser.add_argument(
         "--no-black-fallback",
         action="store_true",
         help="Disable NavMesh gray fallback for dark pixels.",
@@ -236,6 +241,7 @@ def bake_scene(
             trajectory_margin_m=args.trajectory_margin,
             hfov_deg=hfov_deg,
             apply_fallback=not args.no_black_fallback,
+            apply_white_background=not args.no_white_background,
         )
         meta["scene_id"] = scene_id
         meta["floor_y_source"] = "manual" if args.floor_y is not None else "episode_start"
