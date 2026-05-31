@@ -155,8 +155,11 @@ def _build_config(args: argparse.Namespace, scene_id: str, config):
     config.defrost()
     config.NUM_ENVIRONMENTS = 1
     config.TASK_CONFIG.defrost()
+    config.TASK_CONFIG.DATASET.SPLIT = _resolve_split(args, config)
     config.TASK_CONFIG.DATASET.CONTENT_SCENES = [scene_id]
-    config.TASK_CONFIG.DATASET.EPISODES_TO_LOAD = 1
+    # Load all split episodes, then filter by CONTENT_SCENES. EPISODES_TO_LOAD=1
+    # would only read the json head and leave most scenes with an empty list.
+    config.TASK_CONFIG.DATASET.EPISODES_TO_LOAD = 0
     config.TASK_CONFIG.TASK.MEASUREMENTS = []
     configure_bake_sensors(
         config.TASK_CONFIG,
@@ -242,7 +245,8 @@ def main() -> None:
     failed = []
     for scene_id in scenes:
         try:
-            bake_scene(args, base_config, scene_id, floor_y_map[scene_id])
+            scene_config = _load_config(args)
+            bake_scene(args, scene_config, scene_id, floor_y_map[scene_id])
         except Exception as exc:
             print(f"[ERROR] scene={scene_id}: {exc}", file=sys.stderr)
             failed.append(scene_id)
