@@ -1,12 +1,14 @@
 #!/usr/bin/env bash
 # Bake offline top-down texture maps for R2R scenes (2048px, 8m camera).
 # Default: one floor_y per scene from episode start_position y in the dataset split.
+# Camera is placed over the R2R reference-path bbox (local bake, not scene center).
 # Run once on a machine with scene_datasets + GPU, then eval reads cache/topdown_texture/.
 
 set -euo pipefail
 
 RESOLUTION="${RESOLUTION:-2048}"
 CAMERA_HEIGHT="${CAMERA_HEIGHT:-8.0}"
+TRAJECTORY_MARGIN="${TRAJECTORY_MARGIN:-5.0}"
 CACHE_DIR="${CACHE_DIR:-cache/topdown_texture}"
 SCENE="${SCENE:-}"
 SPLIT="${SPLIT:-}"
@@ -16,6 +18,7 @@ ARGS=(
   --cache-dir "${CACHE_DIR}"
   --resolution "${RESOLUTION}"
   --camera-height "${CAMERA_HEIGHT}"
+  --trajectory-margin "${TRAJECTORY_MARGIN}"
 )
 
 if [[ -n "${SPLIT}" ]]; then

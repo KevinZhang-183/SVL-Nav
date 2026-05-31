@@ -862,10 +862,14 @@ class BaseVLNCETrainerLLM(BaseILTrainer):
                     # Save composed visualization (controlled by NAV_VIS flags).
                     if config.NAV_VIS.SAVE_MOSAIC:
                         try:
+                            post_step = envs.call_at(0, "get_agent_info", {})
+                            mosaic_history = list(vis_positions)
+                            if post_step and post_step.get("position") is not None:
+                                mosaic_history.append(post_step["position"])
                             frame = observations_to_image(
                                 observations[0],
                                 infos[0],
-                                history_positions=vis_positions,
+                                history_positions=mosaic_history,
                                 include_overhead_rgb=config.NAV_VIS.ENABLE_OVERHEAD_RGB,
                                 include_topdown_map=config.NAV_VIS.ENABLE_TOPDOWN_MAP,
                                 include_texture_topdown=config.NAV_VIS.ENABLE_TEXTURE_TOPDOWN,
@@ -873,6 +877,9 @@ class BaseVLNCETrainerLLM(BaseILTrainer):
                                 agent_floor_y=positions[0][1] if positions else None,
                                 texture_cache_dir=config.NAV_VIS.TEXTURE_CACHE_DIR,
                                 texture_floor_snap=config.NAV_VIS.TEXTURE_FLOOR_SNAP,
+                                texture_trajectory_margin_m=config.NAV_VIS.TEXTURE_TRAJECTORY_MARGIN_M,
+                                texture_black_threshold=config.NAV_VIS.TEXTURE_BLACK_THRESHOLD,
+                                texture_white_threshold=config.NAV_VIS.TEXTURE_WHITE_THRESHOLD,
                             )
                             mosaic_save_name = f"step_{current_step:03d}_mosaic.jpg"
                             mosaic_save_path = os.path.join(

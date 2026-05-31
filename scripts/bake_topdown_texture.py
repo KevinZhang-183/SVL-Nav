@@ -18,9 +18,13 @@ from habitat_extensions.topdown_texture import (
     DEFAULT_CAMERA_HEIGHT,
     DEFAULT_FLOOR_SNAP,
     DEFAULT_TEXTURE_RESOLUTION,
+    DEFAULT_TRAJECTORY_MARGIN_M,
     bake_floor_texture,
+    compute_hfov_for_bbox,
+    compute_xz_bbox,
     configure_bake_sensors,
     load_r2r_scene_floor_y_map,
+    load_r2r_scene_trajectory_xz_map,
     save_texture_cache,
     snap_floor_y,
 )
@@ -31,7 +35,8 @@ def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
             "Bake MP3D top-down RGB texture maps for offline eval visualization. "
-            "Default: one floor_y per scene from R2R episode start y, 8m camera, 2048px."
+            "Default: one floor_y per scene from R2R episode start y; "
+            "camera over reference-path bbox (8m, 2048px)."
         )
     )
     parser.add_argument(
@@ -93,6 +98,12 @@ def _parse_args() -> argparse.Namespace:
         help="Re-bake even if cache files exist.",
     )
     parser.add_argument(
+        "--trajectory-margin",
+        type=float,
+        default=DEFAULT_TRAJECTORY_MARGIN_M,
+        help="Expand reference-path bbox by this margin in meters (default 5.0).",
+    )
+    parser.add_argument(
         "--no-black-fallback",
         action="store_true",
         help="Disable NavMesh gray fallback for dark pixels.",
@@ -151,7 +162,9 @@ def _build_floor_y_map(
     )
 
 
-def _build_config(args: argparse.Namespace, scene_id: str, config):
+def _build_config(
+    args: argparse.Namespace, scene_id: str, config, hfov_deg: float = 120.0
+):
     config.defrost()
     config.NUM_ENVIRONMENTS = 1
     config.TASK_CONFIG.defrost()
@@ -165,6 +178,7 @@ def _build_config(args: argparse.Namespace, scene_id: str, config):
         config.TASK_CONFIG,
         map_resolution=args.resolution,
         camera_height=args.camera_height,
+        hfov_deg=hfov_deg,
     )
     config.SENSORS = list(config.TASK_CONFIG.SIMULATOR.AGENT_0.SENSORS)
     config.freeze()
@@ -185,15 +199,27 @@ def bake_scene(
     config,
     scene_id: str,
     floor_y: float,
+    trajectory_xz_points: Optional[List[tuple]],
 ) -> None:
-    config = _build_config(args, scene_id, config)
+    traj_bbox = (
+        compute_xz_bbox(trajectory_xz_points, margin_m=args.trajectory_margin)
+        if trajectory_xz_points
+        else None
+    )
+    hfov_deg = (
+        compute_hfov_for_bbox(traj_bbox, args.camera_height)
+        if traj_bbox is not None
+        else 120.0
+    )
+    config = _build_config(args, scene_id, config, hfov_deg=hfov_deg)
     env = make_env_fn(config, get_env_class(config.ENV_NAME))
     try:
         env.reset()
         sim = env.get_habitat_sim()
         print(
             f"[bake] scene={scene_id} floor_y={floor_y:.2f} "
-            f"(episode_start_y) camera={args.camera_height}m res={args.resolution}"
+            f"camera={args.camera_height}m hfov={hfov_deg:.1f} "
+            f"local_bbox={'yes' if traj_bbox else 'no'} res={args.resolution}"
         )
 
         if not _needs_bake(args.cache_dir, scene_id, floor_y, args.force):
@@ -206,6 +232,9 @@ def bake_scene(
             floor_y=floor_y,
             map_resolution=args.resolution,
             camera_height=args.camera_height,
+            trajectory_xz_points=trajectory_xz_points,
+            trajectory_margin_m=args.trajectory_margin,
+            hfov_deg=hfov_deg,
             apply_fallback=not args.no_black_fallback,
         )
         meta["scene_id"] = scene_id
@@ -237,16 +266,29 @@ def main() -> None:
 
     os.makedirs(args.cache_dir, exist_ok=True)
     split = _resolve_split(args, base_config)
+    dataset = base_config.TASK_CONFIG.DATASET
+    trajectory_map = load_r2r_scene_trajectory_xz_map(
+        dataset.DATA_PATH,
+        split,
+        scene_ids=scenes,
+    )
     print(
         f"Baking {len(scenes)} scene(s) from split={split} -> "
-        f"{args.cache_dir} @ {args.resolution}px, camera={args.camera_height}m"
+        f"{args.cache_dir} @ {args.resolution}px, camera={args.camera_height}m, "
+        f"trajectory_margin={args.trajectory_margin}m"
     )
 
     failed = []
     for scene_id in scenes:
         try:
             scene_config = _load_config(args)
-            bake_scene(args, scene_config, scene_id, floor_y_map[scene_id])
+            bake_scene(
+                args,
+                scene_config,
+                scene_id,
+                floor_y_map[scene_id],
+                trajectory_map.get(scene_id, []),
+            )
         except Exception as exc:
             print(f"[ERROR] scene={scene_id}: {exc}", file=sys.stderr)
             failed.append(scene_id)

@@ -30,6 +30,9 @@ def observations_to_image(
     agent_floor_y: Optional[float] = None,
     texture_cache_dir: Optional[str] = None,
     texture_floor_snap: float = 0.25,
+    texture_trajectory_margin_m: float = 5.0,
+    texture_black_threshold: int = 15,
+    texture_white_threshold: int = 235,
 ) -> np.ndarray:
     r"""Generate image of single frame from observation and info
     returned from a single environment step().
@@ -109,6 +112,9 @@ def observations_to_image(
                 history_positions=history_positions,
                 sim=sim,
                 floor_snap=texture_floor_snap,
+                trajectory_margin_m=texture_trajectory_margin_m,
+                black_threshold=texture_black_threshold,
+                white_threshold=texture_white_threshold,
             )
 
         if td_map is None:

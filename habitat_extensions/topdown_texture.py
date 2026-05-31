@@ -21,6 +21,8 @@ DEFAULT_TEXTURE_RESOLUTION = 2048
 DEFAULT_CAMERA_HEIGHT = 8.0
 DEFAULT_FLOOR_SNAP = 0.25
 DEFAULT_BLACK_THRESHOLD = 15
+DEFAULT_WHITE_THRESHOLD = 235
+DEFAULT_TRAJECTORY_MARGIN_M = 5.0
 OVERHEAD_OBS_KEYS = ("overhead_rgb", "overhead_rgb_sensor")
 
 
@@ -50,6 +52,135 @@ def cache_paths(
 
 def snap_floor_y(y: float, floor_snap: float = DEFAULT_FLOOR_SNAP) -> float:
     return round(float(y) / floor_snap) * floor_snap
+
+
+def _append_xz_from_position(
+    points: List[Tuple[float, float]], position: Any
+) -> None:
+    if position is None:
+        return
+    if isinstance(position, dict):
+        _append_xz_from_position(points, position.get("position"))
+        return
+    if isinstance(position, (list, tuple)):
+        if len(position) >= 3 and isinstance(position[0], (int, float)):
+            points.append((float(position[0]), float(position[2])))
+            return
+        for item in position:
+            _append_xz_from_position(points, item)
+
+
+def load_r2r_scene_trajectory_xz_map(
+    data_path: str,
+    split: str,
+    scene_ids: Optional[List[str]] = None,
+) -> Dict[str, List[Tuple[float, float]]]:
+    """Collect xz samples from reference paths (and start/goals) per scene."""
+    dataset_path = data_path.format(split=split)
+    if not os.path.isfile(dataset_path):
+        raise FileNotFoundError(f"R2R dataset not found: {dataset_path}")
+
+    out: Dict[str, List[Tuple[float, float]]] = {}
+    with gzip.open(dataset_path, "rt", encoding="utf-8") as f:
+        payload = json.load(f)
+
+    for episode in payload.get("episodes", []):
+        scene_path = str(episode.get("scene_id", ""))
+        sid = scene_id_from_path(scene_path)
+        if scene_ids is not None and sid not in scene_ids:
+            continue
+        pts = out.setdefault(sid, [])
+        _append_xz_from_position(pts, episode.get("start_position"))
+        _append_xz_from_position(pts, episode.get("goals"))
+        for waypoint in episode.get("reference_path") or []:
+            _append_xz_from_position(pts, waypoint)
+    return out
+
+
+def compute_xz_bbox(
+    points_xz: Sequence[Tuple[float, float]],
+    margin_m: float = DEFAULT_TRAJECTORY_MARGIN_M,
+) -> Optional[Dict[str, float]]:
+    if not points_xz:
+        return None
+    xs = [float(p[0]) for p in points_xz]
+    zs = [float(p[1]) for p in points_xz]
+    return {
+        "min_x": min(xs) - margin_m,
+        "max_x": max(xs) + margin_m,
+        "min_z": min(zs) - margin_m,
+        "max_z": max(zs) + margin_m,
+        "center_x": (min(xs) + max(xs)) / 2.0,
+        "center_z": (min(zs) + max(zs)) / 2.0,
+    }
+
+
+def compute_hfov_for_bbox(
+    bbox: Dict[str, float],
+    camera_height: float,
+    margin: float = 1.12,
+) -> float:
+    half_extent = max(
+        (bbox["max_x"] - bbox["min_x"]) / 2.0,
+        (bbox["max_z"] - bbox["min_z"]) / 2.0,
+        1.0,
+    )
+    height = max(float(camera_height), 1.0)
+    half_fov = math.atan((half_extent * margin) / height)
+    hfov = math.degrees(2.0 * half_fov)
+    return float(min(max(hfov, 30.0), 150.0))
+
+
+def build_bbox_grid_mask(
+    shape: Tuple[int, int],
+    bounds: Dict[str, Sequence[float]],
+    bbox: Dict[str, float],
+) -> np.ndarray:
+    lower = bounds["lower"]
+    upper = bounds["upper"]
+    h, w = shape
+    gs_z = abs(float(upper[2]) - float(lower[2])) / max(h, 1)
+    gs_x = abs(float(upper[0]) - float(lower[0])) / max(w, 1)
+    gz = np.arange(h, dtype=np.float64)[:, None]
+    gy = np.arange(w, dtype=np.float64)[None, :]
+    zz = float(lower[2]) + (gz + 0.5) * gs_z
+    xx = float(lower[0]) + (gy + 0.5) * gs_x
+    return (
+        (xx >= bbox["min_x"])
+        & (xx <= bbox["max_x"])
+        & (zz >= bbox["min_z"])
+        & (zz <= bbox["max_z"])
+    )
+
+
+def collect_runtime_trajectory_xz(
+    history_positions: Optional[Sequence[Union[np.ndarray, Sequence[float]]]],
+    sim: Any = None,
+) -> List[Tuple[float, float]]:
+    points: List[Tuple[float, float]] = []
+    if history_positions:
+        for p in history_positions:
+            if p is None:
+                continue
+            q = np.asarray(p, dtype=np.float64).reshape(-1)
+            if q.size >= 3:
+                points.append((float(q[0]), float(q[2])))
+    if sim is not None:
+        try:
+            pos = sim.get_agent_state().position
+            points.append((float(pos[0]), float(pos[2])))
+        except Exception:
+            pass
+    return points
+
+
+def valid_texture_pixel_mask(
+    texture_rgb: np.ndarray,
+    black_threshold: int = DEFAULT_BLACK_THRESHOLD,
+    white_threshold: int = DEFAULT_WHITE_THRESHOLD,
+) -> np.ndarray:
+    peak = texture_rgb.max(axis=2)
+    return (peak > black_threshold) & (peak < white_threshold)
 
 
 def load_r2r_scene_floor_y_map(
@@ -118,6 +249,27 @@ def discover_floor_heights(
         y = round(float(state.position[1]) / floor_snap) * floor_snap
         heights.append(y)
     return sorted(set(heights))
+
+
+def _navigable_near_xz(
+    sim: Any, x: float, z: float, floor_y: float
+) -> np.ndarray:
+    pf = sim.pathfinder
+    offsets = [(0.0, 0.0)]
+    for radius in (0.5, 1.0, 2.0, 3.0, 5.0):
+        for dx in (-radius, 0.0, radius):
+            for dz in (-radius, 0.0, radius):
+                if dx == 0.0 and dz == 0.0:
+                    continue
+                offsets.append((dx, dz))
+    for dx, dz in offsets:
+        for dy in (0.05, 0.25, 0.5, 0.0, -0.25):
+            candidate = np.array(
+                [x + dx, float(floor_y) + dy, z + dz], dtype=np.float32
+            )
+            if pf.is_navigable(candidate):
+                return candidate
+    return np.array([x, float(floor_y) + 0.05, z], dtype=np.float32)
 
 
 def _navigable_center(sim: Any, floor_y: float) -> np.ndarray:
@@ -190,10 +342,32 @@ def bake_floor_texture(
     floor_y: float,
     map_resolution: int = DEFAULT_TEXTURE_RESOLUTION,
     camera_height: float = DEFAULT_CAMERA_HEIGHT,
+    trajectory_xz_points: Optional[Sequence[Tuple[float, float]]] = None,
+    trajectory_margin_m: float = DEFAULT_TRAJECTORY_MARGIN_M,
+    hfov_deg: Optional[float] = None,
     black_threshold: int = DEFAULT_BLACK_THRESHOLD,
-    apply_fallback: bool = True,
+    apply_fallback: bool = False,
 ) -> Tuple[np.ndarray, Dict[str, Any]]:
-    center = _navigable_center(sim, floor_y)
+    trajectory_bbox = None
+    if trajectory_xz_points:
+        trajectory_bbox = compute_xz_bbox(
+            trajectory_xz_points, margin_m=trajectory_margin_m
+        )
+
+    if trajectory_bbox is not None:
+        center = _navigable_near_xz(
+            sim,
+            trajectory_bbox["center_x"],
+            trajectory_bbox["center_z"],
+            floor_y,
+        )
+        if hfov_deg is None:
+            hfov_deg = compute_hfov_for_bbox(trajectory_bbox, camera_height)
+    else:
+        center = _navigable_center(sim, floor_y)
+        if hfov_deg is None:
+            hfov_deg = _compute_hfov_deg(sim, floor_y, camera_height)
+
     center[1] = float(floor_y) + 0.05
     rotation = np.quaternion(1, 0, 0, 0)
 
@@ -219,11 +393,6 @@ def bake_floor_texture(
             interpolation=cv2.INTER_LINEAR,
         )
 
-    if apply_fallback:
-        texture = apply_black_fallback(
-            texture, label_map, fog_of_war_mask=None, threshold=black_threshold
-        )
-
     lower, upper = sim.pathfinder.get_bounds()
     metadata = {
         "scene_id": None,
@@ -232,7 +401,7 @@ def bake_floor_texture(
         "map_resolution": int(map_resolution),
         "meters_per_px": float(meters_per_px),
         "camera_height": float(camera_height),
-        "hfov_deg": float(_compute_hfov_deg(sim, floor_y, camera_height)),
+        "hfov_deg": float(hfov_deg),
         "bounds": {
             "lower": [float(x) for x in lower],
             "upper": [float(x) for x in upper],
@@ -241,7 +410,12 @@ def bake_floor_texture(
         "black_fallback": bool(apply_fallback),
         "black_threshold": int(black_threshold),
         "floor_y_source": "episode_start",
+        "white_threshold": int(DEFAULT_WHITE_THRESHOLD),
+        "local_bake": trajectory_bbox is not None,
+        "trajectory_margin_m": float(trajectory_margin_m),
     }
+    if trajectory_bbox is not None:
+        metadata["trajectory_bbox"] = trajectory_bbox
     return texture, metadata
 
 
@@ -337,6 +511,38 @@ def overlay_labels_on_texture(
     return bgr
 
 
+def compose_geometry_topdown_panel(
+    info_td: Dict[str, Any],
+    history_positions: Optional[Sequence[Union[np.ndarray, Sequence[float]]]] = None,
+    sim: Any = None,
+    bounds: Optional[Dict[str, Sequence[float]]] = None,
+) -> np.ndarray:
+    label_map = info_td["map"]
+    fog = info_td.get("fog_of_war_mask")
+    bgr = ext_maps.colorize_topdown_map(
+        label_map, fog, fog_of_war_desat_amount=0.75
+    )
+    bgr = habitat_maps.draw_agent(
+        image=bgr,
+        agent_center_coord=info_td["agent_map_coord"],
+        agent_rotation=info_td["agent_angle"],
+        agent_radius_px=min(bgr.shape[0:2]) // 24,
+    )
+    if history_positions:
+        from habitat_extensions import vis_overlay
+
+        bgr = vis_overlay.draw_history_markers(
+            bgr,
+            sim,
+            history_positions,
+            bounds=bounds or info_td.get("bounds"),
+            min_dist_m=0.35,
+            color_bgr=(0, 140, 255),
+            half_size_px=3,
+        )
+    return bgr
+
+
 def compose_texture_topdown_panel(
     info_td: Dict[str, Any],
     cache_dir: str,
@@ -345,6 +551,9 @@ def compose_texture_topdown_panel(
     history_positions: Optional[Sequence[Union[np.ndarray, Sequence[float]]]] = None,
     sim: Any = None,
     floor_snap: float = DEFAULT_FLOOR_SNAP,
+    trajectory_margin_m: float = DEFAULT_TRAJECTORY_MARGIN_M,
+    black_threshold: int = DEFAULT_BLACK_THRESHOLD,
+    white_threshold: int = DEFAULT_WHITE_THRESHOLD,
 ) -> Optional[np.ndarray]:
     texture_rgb, meta = load_texture_for_agent(
         cache_dir, scene_id, agent_floor_y, floor_snap=floor_snap
@@ -353,16 +562,56 @@ def compose_texture_topdown_panel(
         return None
 
     label_map = info_td["map"]
-    fog = info_td.get("fog_of_war_mask")
-    bgr = overlay_labels_on_texture(texture_rgb, label_map)
+    bounds = info_td.get("bounds") or meta.get("bounds")
+    if bounds is None:
+        return None
 
-    if fog is not None:
-        desat = ext_maps.colorize_topdown_map(label_map, fog, fog_of_war_desat_amount=0.75)
-        fog_mask = label_map != ext_maps.MAP_INVALID_POINT
-        bgr[fog_mask] = (
-            0.35 * bgr[fog_mask].astype(np.float32)
-            + 0.65 * desat[fog_mask].astype(np.float32)
-        ).astype(np.uint8)
+    bgr = compose_geometry_topdown_panel(
+        info_td,
+        history_positions=None,
+        sim=sim,
+        bounds=bounds,
+    )
+
+    baked_bbox = meta.get("trajectory_bbox")
+    runtime_points = collect_runtime_trajectory_xz(history_positions, sim=sim)
+    runtime_bbox = compute_xz_bbox(
+        runtime_points, margin_m=trajectory_margin_m
+    )
+    if runtime_bbox is None and baked_bbox is not None:
+        runtime_bbox = baked_bbox
+    if runtime_bbox is None:
+        return cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
+
+    bbox_mask = build_bbox_grid_mask(label_map.shape, bounds, runtime_bbox)
+    navigable = label_map != ext_maps.MAP_INVALID_POINT
+    if texture_rgb.shape[:2] != label_map.shape:
+        texture_rgb = cv2.resize(
+            texture_rgb,
+            (label_map.shape[1], label_map.shape[0]),
+            interpolation=cv2.INTER_LINEAR,
+        )
+    valid_tex = valid_texture_pixel_mask(
+        texture_rgb,
+        black_threshold=black_threshold,
+        white_threshold=white_threshold,
+    )
+    blend_mask = bbox_mask & navigable & valid_tex
+
+    texture_bgr = cv2.cvtColor(texture_rgb, cv2.COLOR_RGB2BGR)
+    bgr[blend_mask] = texture_bgr[blend_mask]
+
+    overlay_values = set(range(15, 246)).union(
+        {
+            ext_maps.MAP_SOURCE_POINT_INDICATOR,
+            ext_maps.MAP_TARGET_POINT_INDICATOR,
+            ext_maps.MAP_BORDER_INDICATOR,
+        }
+    )
+    for val in overlay_values:
+        mask = label_map == val
+        if np.any(mask):
+            bgr[mask] = ext_maps.TOP_DOWN_MAP_COLORS[val]
 
     bgr = habitat_maps.draw_agent(
         image=bgr,
@@ -370,7 +619,6 @@ def compose_texture_topdown_panel(
         agent_rotation=info_td["agent_angle"],
         agent_radius_px=min(bgr.shape[0:2]) // 24,
     )
-
     if history_positions:
         from habitat_extensions import vis_overlay
 
@@ -378,7 +626,7 @@ def compose_texture_topdown_panel(
             bgr,
             sim,
             history_positions,
-            bounds=info_td.get("bounds") or meta.get("bounds"),
+            bounds=bounds,
             min_dist_m=0.35,
             color_bgr=(0, 140, 255),
             half_size_px=3,
@@ -390,6 +638,7 @@ def configure_bake_sensors(
     task_config: Any,
     map_resolution: int,
     camera_height: float,
+    hfov_deg: float = 120.0,
 ) -> None:
     task_config.defrost()
     sensors = list(task_config.SIMULATOR.AGENT_0.SENSORS)
@@ -408,5 +657,5 @@ def configure_bake_sensors(
         0.0,
         0.0,
     ]
-    task_config.SIMULATOR.OVERHEAD_RGB_SENSOR.HFOV = 120.0
+    task_config.SIMULATOR.OVERHEAD_RGB_SENSOR.HFOV = float(hfov_deg)
     task_config.freeze()
