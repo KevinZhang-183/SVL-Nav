@@ -186,6 +186,7 @@ _C.NAV_VIS = CN()
 _C.NAV_VIS.ENABLE_TOPDOWN_MAP = False
 _C.NAV_VIS.MAP_RESOLUTION = 2048
 _C.NAV_VIS.TOPDOWN_ONLY = True
+_C.NAV_VIS.SAVE_SELECTED_RGBD = True
 
 
 def purge_keys(config: CN, keys: List[str]) -> None:

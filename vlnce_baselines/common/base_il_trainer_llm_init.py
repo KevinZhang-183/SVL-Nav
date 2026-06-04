@@ -251,7 +251,64 @@ class BaseVLNCETrainerLLM(BaseILTrainer):
                 waypoint_radius['0'] = angles[angle_idx]
                 
         return waypoint_images, waypoint_radius, waypoint_distances
-    
+
+    def _save_selected_vp_rgbd(
+        self,
+        nav_logger,
+        images_dict,
+        next_vp,
+        radius_dict,
+        distance_dict,
+        observe_dict,
+        save_dir,
+        step,
+    ):
+        """Save RGB/depth for the selected next viewpoint into Vis_results episode dir."""
+        vp_key = str(next_vp)
+        if vp_key not in radius_dict or vp_key not in distance_dict:
+            common_keys = [
+                k
+                for k in radius_dict.keys()
+                if k in distance_dict and k in observe_dict
+            ]
+            if not common_keys:
+                nav_logger.info(
+                    f"[WARN] Skip RGBD save: vp_key={vp_key} not in radius/distance dicts."
+                )
+                return vp_key
+            nav_logger.info(
+                f"[WARN] next_vp key mismatch: vp_key={vp_key}; fallback to {common_keys[0]}"
+            )
+            vp_key = common_keys[0]
+
+        entry = images_dict.get(vp_key)
+        if entry is None:
+            nav_logger.info(
+                f"[WARN] Skip RGBD save: vp_key={vp_key} not found in images_dict."
+            )
+            return vp_key
+
+        if "rgb" in entry and entry["rgb"] is not None:
+            rgb_path = os.path.join(save_dir, f"step_{step:03d}_vp_{vp_key}_rgb.jpg")
+            entry["rgb"].save(rgb_path, format="JPEG")
+            nav_logger.info(f">>> Saved selected vp RGB: {rgb_path}")
+        else:
+            nav_logger.info(
+                f"[WARN] Skip RGB save: vp_key={vp_key} missing rgb in images_dict."
+            )
+
+        if "depth" in entry and entry["depth"] is not None:
+            depth_path = os.path.join(
+                save_dir, f"step_{step:03d}_vp_{vp_key}_depth.jpg"
+            )
+            entry["depth"].save(depth_path, format="JPEG")
+            nav_logger.info(f">>> Saved selected vp depth: {depth_path}")
+        else:
+            nav_logger.info(
+                f"[WARN] Skip depth save: vp_key={vp_key} missing depth in images_dict."
+            )
+
+        return vp_key
 
     def _eval_llm(
         self,
@@ -405,6 +462,11 @@ class BaseVLNCETrainerLLM(BaseILTrainer):
                         f"episode_{active_vis_episode_id}",
                     )
                     os.makedirs(active_vis_episode_dir, exist_ok=True)
+                    instruction_txt_path = os.path.join(
+                        active_vis_episode_dir, "instruction.txt"
+                    )
+                    with open(instruction_txt_path, "w", encoding="utf-8") as f_instruction:
+                        f_instruction.write(str(instruction).strip() + "\n")
                     nav_logger.info(
                         f">>> Prepared vis save directory: {active_vis_episode_dir}"
                     )
@@ -431,7 +493,7 @@ class BaseVLNCETrainerLLM(BaseILTrainer):
             nav_logger.info("Actions: "+actions)
             nav_logger.info("Landmarks: " + landmarks)
             
-            step_length = 6 if len(actions.split("\n")) <= 6 else 8 
+            step_length = 7 if len(actions.split("\n")) <= 6 else 9 
 
             stop_flag = False
             current_step += 1
@@ -470,19 +532,43 @@ class BaseVLNCETrainerLLM(BaseILTrainer):
            
             try:
                 if not stop_flag:
+                    vp_key = str(next_vp)
+                    if (
+                        config.NAV_VIS.ENABLE_TOPDOWN_MAP
+                        and getattr(config.NAV_VIS, "SAVE_SELECTED_RGBD", True)
+                        and active_vis_episode_dir is not None
+                    ):
+                        try:
+                            vp_key = self._save_selected_vp_rgbd(
+                                nav_logger,
+                                images_dict,
+                                next_vp,
+                                radius_dict,
+                                distance_dict,
+                                observe_dict,
+                                active_vis_episode_dir,
+                                current_step,
+                            )
+                        except Exception as rgbd_exc:
+                            nav_logger.info(
+                                f"[WARN] Failed to save selected vp RGBD: {rgbd_exc}"
+                            )
+
                     env_actions = []
                     env_actions.append({'action':
                         {'action': 4,
                         'action_args':{
-                            'angle': radius_dict[next_vp],
-                            'distance': distance_dict[next_vp],
+                            'angle': radius_dict[vp_key],
+                            'distance': distance_dict[vp_key],
                         }}})
                     nav_logger.info(f"The final env action: {env_actions}")
                     outputs = envs.step(env_actions)
                     
-                    curr_observe = observe_dict[next_vp]
+                    curr_observe = observe_dict[vp_key]
                     nav_logger.info("========== save history ==========")
-                    nav_history = navigator.save_history(nav_logger, current_step, next_vp, thought, curr_observe, nav_history)
+                    nav_history = navigator.save_history(
+                        nav_logger, current_step, vp_key, thought, curr_observe, nav_history
+                    )
                 
                     observations, _, dones, infos = [list(x) for x in zip(*outputs)]
 
