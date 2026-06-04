@@ -36,7 +36,7 @@ def _render_topdown_panel(
         image=td_map,
         agent_center_coord=info_td["agent_map_coord"],
         agent_rotation=info_td["agent_angle"],
-        agent_radius_px=min(td_map.shape[0:2]) // 48,
+        agent_radius_px=min(td_map.shape[0:2]) // 36,
     )
     if td_map.shape[1] < td_map.shape[0]:
         td_map = np.rot90(td_map, 1)
