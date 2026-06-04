@@ -32,6 +32,7 @@ checkpoints/
 *.safetensors
 
 # ===== 运行产物 / 可视化 =====
+Vis_results/
 cache_files/
 image_show/
 selected_next_vp_rgb/

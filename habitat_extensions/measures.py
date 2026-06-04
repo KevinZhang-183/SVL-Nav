@@ -496,15 +496,19 @@ class TopDownMapVLNCE(Measure):
             self._step_count * 245 // self._config.MAX_EPISODE_STEPS, 245
         )
         if self._top_down_map[a_x, a_y] != maps.MAP_SOURCE_POINT_INDICATOR:
+            thickness_scale = getattr(self._config, "TRAJECTORY_THICKNESS_SCALE", 0.65)
             maps.drawline(
                 self._top_down_map,
                 self._previous_xy_location,
                 (a_y, a_x),
                 gradient_color,
-                thickness=int(
-                    self._config.MAP_RESOLUTION
-                    * 1.4
-                    / maps.MAP_THICKNESS_SCALAR
+                thickness=max(
+                    2,
+                    int(
+                        self._config.MAP_RESOLUTION
+                        * thickness_scale
+                        / maps.MAP_THICKNESS_SCALAR
+                    ),
                 ),
                 style="filled",
             )

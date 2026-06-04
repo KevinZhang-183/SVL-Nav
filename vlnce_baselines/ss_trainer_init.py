@@ -1,9 +1,9 @@
 import warnings
 from habitat_baselines.common.baseline_registry import baseline_registry
-# from vlnce_baselines.common.base_il_trainer_llm_init import BaseVLNCETrainerLLM
+from vlnce_baselines.common.base_il_trainer_llm_init import BaseVLNCETrainerLLM
 # from vlnce_baselines.common.base_il_trainer_llm_init_noSWM import BaseVLNCETrainerLLM
 # from vlnce_baselines.common.base_il_trainer_llm_init_SWM import BaseVLNCETrainerLLM
-from vlnce_baselines.common.base_il_trainer_llm_init_SWM_SHM import BaseVLNCETrainerLLM
+# from vlnce_baselines.common.base_il_trainer_llm_init_SWM_SHM import BaseVLNCETrainerLLM
 with warnings.catch_warnings():
     warnings.filterwarnings("ignore", category=FutureWarning)
 

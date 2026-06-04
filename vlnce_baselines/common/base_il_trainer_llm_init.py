@@ -41,6 +41,8 @@ from habitat_baselines.utils.common import (
     poll_checkpoint_folder,
 )
 
+from habitat.core.utils import try_cv2_import
+from habitat_extensions.nav_vis import apply_nav_vis_config
 from habitat_extensions.utils import observations_to_image
 from vlnce_baselines.common.aux_losses import AuxLosses
 from vlnce_baselines.common.env_utils import (
@@ -67,6 +69,8 @@ try:
         import tensorflow as tf  # noqa: F401
 except ImportError:
     tf = None
+
+cv2 = try_cv2_import()
 
 class BaseVLNCETrainerLLM(BaseILTrainer):
     r"""A base trainer for VLN-CE imitation learning."""
@@ -269,10 +273,19 @@ class BaseVLNCETrainerLLM(BaseILTrainer):
         config.TASK_CONFIG.ENVIRONMENT.ITERATOR_OPTIONS.MAX_SCENE_REPEAT_STEPS = (
             -1
         )
+        apply_nav_vis_config(config)
+        if config.NAV_VIS.ENABLE_TOPDOWN_MAP:
+            config.TASK_CONFIG.defrost()
+            if "COLLISIONS" not in config.TASK_CONFIG.TASK.MEASUREMENTS:
+                config.TASK_CONFIG.TASK.MEASUREMENTS.append("COLLISIONS")
+            config.TASK_CONFIG.freeze()
         if len(config.VIDEO_OPTION) > 0:
-            config.defrost()
-            config.TASK_CONFIG.TASK.MEASUREMENTS.append("TOP_DOWN_MAP_VLNCE")
-            config.TASK_CONFIG.TASK.MEASUREMENTS.append("COLLISIONS")
+            config.TASK_CONFIG.defrost()
+            if "TOP_DOWN_MAP_VLNCE" not in config.TASK_CONFIG.TASK.MEASUREMENTS:
+                config.TASK_CONFIG.TASK.MEASUREMENTS.append("TOP_DOWN_MAP_VLNCE")
+            if "COLLISIONS" not in config.TASK_CONFIG.TASK.MEASUREMENTS:
+                config.TASK_CONFIG.TASK.MEASUREMENTS.append("COLLISIONS")
+            config.TASK_CONFIG.freeze()
         config.freeze()
 
         if config.EVAL.SAVE_RESULTS:
@@ -373,14 +386,35 @@ class BaseVLNCETrainerLLM(BaseILTrainer):
         current_step = 0
         nav_history = []
         error_number = 0
+        vis_results_root = "./Vis_results"
+        active_vis_episode_id = None
+        active_vis_episode_dir = None
+        current_episodes_flag = None
+        vis_positions = []
+        os.makedirs(vis_results_root, exist_ok=True)
         while envs.num_envs > 0 and len(stats_episodes) < episodes_to_eval:
             current_episodes = envs.current_episodes()
+            current_episode_id = current_episodes[0].episode_id
+            if current_episodes_flag != current_episode_id:
+                current_episodes_flag = current_episode_id
+                vis_positions = []
+                if config.NAV_VIS.ENABLE_TOPDOWN_MAP:
+                    active_vis_episode_id = str(current_episode_id)
+                    active_vis_episode_dir = os.path.join(
+                        vis_results_root,
+                        f"episode_{active_vis_episode_id}",
+                    )
+                    os.makedirs(active_vis_episode_dir, exist_ok=True)
+                    nav_logger.info(
+                        f">>> Prepared vis save directory: {active_vis_episode_dir}"
+                    )
             positions = []; headings = []
             for ob_i in range(len(current_episodes)): 
                 agent_state_i = envs.call_at(ob_i,
                         "get_agent_info", {})
                 positions.append(agent_state_i['position'])
                 headings.append(agent_state_i['heading'])
+                vis_positions.append(agent_state_i['position'])
             # ==========Navigator start==========
             nav_logger.info(f"==================== The current episode id is {current_episodes[0].episode_id} ====================")
             nav_logger.info("Instruction: "+instruction)
@@ -451,6 +485,40 @@ class BaseVLNCETrainerLLM(BaseILTrainer):
                     nav_history = navigator.save_history(nav_logger, current_step, next_vp, thought, curr_observe, nav_history)
                 
                     observations, _, dones, infos = [list(x) for x in zip(*outputs)]
+
+                    if (
+                        config.NAV_VIS.ENABLE_TOPDOWN_MAP
+                        and active_vis_episode_dir is not None
+                    ):
+                        try:
+                            frame = observations_to_image(
+                                observations[0],
+                                infos[0],
+                                history_positions=vis_positions,
+                                include_topdown_map=True,
+                                include_egocentric=not config.NAV_VIS.TOPDOWN_ONLY,
+                            )
+                            vis_suffix = (
+                                "topdown"
+                                if config.NAV_VIS.TOPDOWN_ONLY
+                                else "mosaic"
+                            )
+                            vis_save_path = os.path.join(
+                                active_vis_episode_dir,
+                                f"step_{current_step:03d}_{vis_suffix}.jpg",
+                            )
+                            cv2.imwrite(
+                                vis_save_path,
+                                cv2.cvtColor(frame, cv2.COLOR_RGB2BGR),
+                            )
+                            nav_logger.info(
+                                f">>> Saved top-down vis frame: {vis_save_path}"
+                            )
+                        except Exception as vis_exc:
+                            nav_logger.info(
+                                f"[WARN] Failed to save top-down vis frame: {vis_exc}"
+                            )
+
                     instruction, images_list = self.generate_input(observations[-1])
                     error_number = 0 
                     # finish navigation

@@ -179,6 +179,14 @@ _C.MODEL.PROGRESS_MONITOR = CN()
 _C.MODEL.PROGRESS_MONITOR.use = False
 _C.MODEL.PROGRESS_MONITOR.alpha = 1.0  # loss multiplier
 
+# -----------------------------------------------------------------------------
+# NAV_VIS (geometric top-down map; override in run yaml)
+# -----------------------------------------------------------------------------
+_C.NAV_VIS = CN()
+_C.NAV_VIS.ENABLE_TOPDOWN_MAP = False
+_C.NAV_VIS.MAP_RESOLUTION = 2048
+_C.NAV_VIS.TOPDOWN_ONLY = True
+
 
 def purge_keys(config: CN, keys: List[str]) -> None:
     for k in keys:

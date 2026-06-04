@@ -9,6 +9,11 @@ CHECKPOINT_FOLDER: logs/checkpoints/
 EVAL_CKPT_PATH_DIR: logs/checkpoints/
 RESULTS_DIR: logs/eval_results/
 
+NAV_VIS:
+  ENABLE_TOPDOWN_MAP: True
+  MAP_RESOLUTION: 2048
+  TOPDOWN_ONLY: True
+
 EVAL:
   USE_CKPT_CONFIG: False
   SPLIT: val_unseen
