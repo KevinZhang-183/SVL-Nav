@@ -16,6 +16,8 @@ def draw_history_markers(
     sim: Optional[Simulator],
     positions_xyz: Sequence[Union[np.ndarray, Sequence[float]]],
     bounds: Optional[Dict[str, Tuple[float, float]]] = None,
+    full_grid_shape: Optional[Tuple[int, int]] = None,
+    crop_origin: Optional[Tuple[int, int]] = None,
     min_dist_m: float = 0.35,
     color_bgr: Tuple[int, int, int] = (0, 140, 255),
     radius_px: int = 5,
@@ -25,7 +27,7 @@ def draw_history_markers(
     r"""Draw subsampled visited positions on a colorized top-down BGR image.
 
     Uses filled circles with a light outline so markers stay visible over the
-    agent trajectory line. Call after the map is resized to the final mosaic size.
+    agent trajectory line. Use full_grid_shape + crop_origin when the map was cropped.
     """
     out = bgr.copy()
     if not positions_xyz:
@@ -56,12 +58,16 @@ def draw_history_markers(
                 sim,
             )
         elif bounds is not None:
+            grid_shape = full_grid_shape if full_grid_shape is not None else (h, w)
             gx, gy = ext_maps.static_to_grid(
                 float(q[2]),
                 float(q[0]),
-                (h, w),
+                grid_shape,
                 bounds,
             )
+            if crop_origin is not None:
+                gx -= int(crop_origin[0])
+                gy -= int(crop_origin[1])
         else:
             continue
         if not (0 <= gx < h and 0 <= gy < w):
